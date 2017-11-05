@@ -1,4 +1,4 @@
-function models = BuildGAM(xt,xtype,yt,dt,binrange,nbins,nfolds,filtwidth,modelname,lambda)
+function models = BuildGAM(xt,xtype,yt,dt,binrange,nbins,nfolds,filtwidth,modelname,lambda,alpha)
 
 %% Description
 % The model: r = f(W*theta), where r is the predicted # of spikes, W is a
@@ -16,6 +16,7 @@ if nvars > nt
 end
 
 %% define undefined analysis parameters
+if nargin<10, alpha = 0.05; end
 if nargin<9, modelname = 'LNP'; end
 if nargin<8, filtwidth = 3; end
 if nargin<7, nfolds = 10; end
@@ -38,6 +39,7 @@ end
 nModels = sum(arrayfun(@(k) nchoosek(nvars,k), 1:nvars));
 X = cell(nModels,1);
 Xtype = cell(nModels,1);
+Xc = cell(nModels,1);
 Nprs = cell(nModels,1);
 Lambda = cell(nModels,1);
 ModelCombo = arrayfun(@(k) mat2cell(nchoosek(1:nvars,k),ones(nchoosek(nvars,k),1)),1:nvars,'UniformOutput',false);
@@ -47,6 +49,7 @@ for i=1:nModels
     Model{i}(ModelCombo{i})=true;
     X{i} = cell2mat(x(Model{i})); % X{i} stores inputs for the i^th model
     Xtype{i} = xtype(Model{i});
+    Xc{i} = cell2mat(xc(Model{i}));
     Nprs{i} = cell2mat(nprs(Model{i}));
     Lambda{i} = lambda(Model{i});
 end
@@ -57,10 +60,19 @@ h = exp(-t.^2/(2*filtwidth^2));
 h = h/sum(h);
 
 %% fit all models
-models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
+fprintf('......(1/2) Fitting generalized additive models\n');
+models.class = Model; models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
 for n = 1:nModels
     fprintf('\t- Fitting model %d of %d\n', n, nModels);
     if strcmp(modelname,'LNP')
         [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n});
     end
 end
+models.x = Xc;
+
+%% select best model
+fprintf('......(2/2) Performing forward model selection\n');
+testFit = cell2mat(models.testFit);
+nrows = size(testFit,1);
+LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+models.bestmodel = ForwardSelect(Model,LLvals,alpha);

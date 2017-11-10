@@ -27,7 +27,7 @@ paramMat = nan(nfolds,nprs);
 
 %% perform k-fold cross validation
 for k = 1:nfolds
-    fprintf('\t\t- Cross validation fold %d of %d\n', k, nfolds);
+%     fprintf('\t\t- Cross validation fold %d of %d\n', k, nfolds);
     
     % get test data for the kth fold - comes from chunks across entire session
     test_ind = cell2mat(arrayfun(@(j) edges((j-1)*nfolds + k):edges((j-1)*nfolds + k + 1)-1, 1:nchunks,'UniformOutput',false));

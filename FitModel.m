@@ -50,7 +50,7 @@ for k = 1:nfolds
     if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
     else, init_param = param; end % use final parameters from previous training set
     
-    param = fminunc(@(param) ln_poisson_model(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of LNP model
+    param = fminunc(@(param) LNP_model(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of LNP model
     
     %% %%%%%%%%%%% TEST DATA %%%%%%%%%%%%%
     % compute model predicted firing rate

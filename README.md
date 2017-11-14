@@ -38,7 +38,7 @@ where <a href="https://www.codecogs.com/eqnedit.php?latex=P(x_{kj}=1)" target="_
 
 To fit the model using your data, you need to use the function ``BuildGAM``. ``BuildGAM`` takes in three inputs ``xt``, ``yt``, and ``prs``.
 
-``xt`` must an n x 1 cell array containing the values of input variables where n is the total number of input variables. Each cell in ``xt`` corresponds to one input variables. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is a one dimensional variable, ``xt{i}`` must be a T x 1 vector, 
+``xt`` must be an n x 1 cell array containing the values of input variables where n is the total number of input variables. Each cell in ``xt`` corresponds to one input variable. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is a one dimensional variable, ``xt{i}`` must be a T x 1 vector, 
 T being the total number of observations. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is two-dimensional e.g. position, then the corresponding ``xt{i}`` must be a T x 2 array, with the two columns corresponding to the two dimensions.
 
 ``yt`` must be a T x 1 array of spike counts. It is advisable to record your observations using a sampling rate of at least ``50Hz`` so that ``yt`` is mostly comprised of 0s and 1s.

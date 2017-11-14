@@ -1,5 +1,14 @@
 function models = PlotGAM(models,prs)
 
+%% Description
+% This function will generate three plots: 
+% 1) log likelihood ratios of each model variant (with standard errors),
+% the ratios being taken with respect to a one-parameter null model (constant
+% firing rate with no tuning).
+% 2) Fraction of variance in neural response explained by each model variant.
+% 3) Marginal tuning functions of the best model.
+
+%%
 fprintf('...... Plotting results\n');
 
 %% load analysis parameters
@@ -23,7 +32,7 @@ bestmodel = models.bestmodel;
 LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
 Vexp = reshape(testFit(:,1),nfolds,nrows/nfolds); % 1st column contains variance explained
 xvals = models.x;
-fvals = models.marginaltunings{bestmodel};
+if ~isnan(bestmodel), fvals = models.marginaltunings{bestmodel}; end
 
 %% plot
 SS_pix = get(0,'screensize');
@@ -52,17 +61,19 @@ set(gca,'XLim',[0 nModels+1]); set(gca,'XTick',1:nModels);
 set(gca,'XTickLabel',modellabel);
 ylabel('Fraction of variance explained','Fontsize',12);
 
-% tuning functions
-for i=1:nvars
-    if strcmp(vartype{i},'2D') && ~isempty(fvals{i})
-        subplot(Nr,Nc,2*Nc+i);
-        imagesc(xvals{i}{1},xvals{i}{2},fvals{i});
-        xlabel(varname{i}{1}); ylabel(varname{i}{2});
-        set(gca,'fontsize',16); box off;
-    elseif ~isempty(fvals{i})
-        subplot(Nr,Nc,2*Nc+i);
-        plot(xvals{i},fvals{i},'Linewidth',2,'Color','k');
-        xlabel(varname{i}); ylabel('Firing rate (spk/s)');
-        set(gca,'fontsize',16); box off;
+% plot tuning functions if the best model is better than the null model
+if ~isnan(bestmodel)
+    for i=1:nvars
+        if strcmp(vartype{i},'2D') && ~isempty(fvals{i})
+            subplot(Nr,Nc,2*Nc+i);
+            imagesc(xvals{i}{1},xvals{i}{2},fvals{i});
+            xlabel(varname{i}{1}); ylabel(varname{i}{2});
+            set(gca,'fontsize',16); box off;
+        elseif ~isempty(fvals{i})
+            subplot(Nr,Nc,2*Nc+i);
+            plot(xvals{i},fvals{i},'Linewidth',2,'Color','k');
+            xlabel(varname{i}); ylabel('Firing rate (spk/s)');
+            set(gca,'fontsize',16); box off;
+        end
     end
 end

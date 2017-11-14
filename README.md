@@ -28,9 +28,9 @@ where we have assumed a factorisable gaussian prior for simplicity, and <a href=
 
 <a href="https://www.codecogs.com/eqnedit.php?latex=\mathrm{log}\&space;L(\mathbf{f}|\mathbf{y},\mathbf{x})\&space;-&space;\lambda&space;\sum_{i=1}^{n}\sum_{j=1}^{m_i}\left&space;\|&space;f_{i,j}-f_{i,j&plus;1}&space;\right&space;\|^{2}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathrm{log}\&space;L(\mathbf{f}|\mathbf{y},\mathbf{x})\&space;-&space;\sum_{i=1}^{n}\lambda_i&space;\sum_{j=1}^{m_i}\left&space;\|&space;f_{i,j}-f_{i,j&plus;1}&space;\right&space;\|^{2}" title="\mathrm{log}\ L(\mathbf{f}|\mathbf{y},\mathbf{x})\ - \lambda \sum_{i=1}^{n}\sum_{j=1}^{m_i}\left \| f_{i,j}-f_{i,j+1} \right \|^{2}" /></a>
 
-Once we determine the best-fit model parameters <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{\hat{f}}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{\hat{f}}_i" title="\mathbf{\hat{f}}_i" /></a>, we can construct the marginal tuning function <a href="https://www.codecogs.com/eqnedit.php?latex=\mathbf{h}_i" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathbf{h}_i" title="\mathbf{h}_i" /></a> that describes the tuning of response <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{y}" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{y}" title="\mathbf{y}" /></a> to the input variable <a href="https://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> as:
+Once we determine the best-fit model parameters <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{\hat{f}}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{\hat{f}}_i" title="\mathbf{\hat{f}}_i" /></a>, we can construct the marginal 'tuning' to each individual input variable <a href="https://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> by computing the conditional mean of <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{y}" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{y}" title="\mathbf{y}" /></a> given <a href="https://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> as:
 
-<a href="https://www.codecogs.com/eqnedit.php?latex=\mathbf{h}_i(\mathbf{x}_i)=g^{-1}(\hat{\mathbf{f}}_i)\sum_{j=1}^{p_k}\prod_{k=1,k\neq&space;i}^{n}\hat{f}_{k,j}\&space;P(x_{kj}=1)" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\mathbf{h}_i(\mathbf{x}_i)=g^{-1}(\hat{\mathbf{f}}_i)\sum_{j=1}^{p_k}\prod_{k=1,k\neq&space;i}^{n}\hat{f}_{k,j}\&space;P(x_{kj}=1)" title="\mathbf{h}_i(\mathbf{x}_i)=g^{-1}(\hat{\mathbf{f}}_i)\sum_{j=1}^{p_k}\prod_{k=1,k\neq i}^{n}\hat{f}_{k,j}\ P(x_{kj}=1)" /></a> 
+<a href="http://www.codecogs.com/eqnedit.php?latex=E(\mathbf{y}|\mathbf{x}_i)=g^{-1}\left&space;(\mathbf{\hat{f}}_i&space;\&space;&plus;\&space;\sum_{i=1}^{n}\prod_{k=1,k\neq&space;i}^{m_i}\hat{f}_{k,j}\&space;P(x_{kj}=1)\right&space;)" target="_blank"><img src="http://latex.codecogs.com/gif.latex?E(\mathbf{y}|\mathbf{x}_i)=g^{-1}\left&space;(\mathbf{\hat{f}}_i&space;\&space;&plus;\&space;\sum_{i=1}^{n}\prod_{k=1,k\neq&space;i}^{m_i}\hat{f}_{k,j}\&space;P(x_{kj}=1)\right&space;)" title="E(\mathbf{y}|\mathbf{x}_i)=g^{-1}\left (\mathbf{\hat{f}}_i \ +\ \sum_{i=1}^{n}\prod_{k=1,k\neq i}^{m_i}\hat{f}_{k,j}\ P(x_{kj}=1)\right )" /></a>
 
 where <a href="https://www.codecogs.com/eqnedit.php?latex=P(x_{kj}=1)" target="_blank"><img src="https://latex.codecogs.com/gif.latex?P(x_{kj}=1)" title="P(x_{kj})" /></a> denotes the probability that <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_k\in&space;j^{\mathrm{th}}&space;\&space;\mathrm{bin}" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_k\in&space;j^{\mathrm{th}}&space;\&space;\mathrm{bin}" title="\mathbf{x}_k\in j^{\mathrm{th}} \ \mathrm{bin}" /></a>.
 
@@ -52,22 +52,22 @@ T being the total number of observations. If <a href="http://www.codecogs.com/eq
 ``prs.nfolds``      Number of folds for cross-validation  
 ``prs.dt``          Time (in secs) between consecutive observation samples (1/samplingfrequency)  
 ``prs.filtwidth``   Width of gaussian filter (in samples) to smooth spike train  
-``prs.modelname``   Name of the model (``'LNP'``,``'LP'`` or ``'Logistic'``)  
+``prs.linkfunc``    Choice of link function (``'log'``,``'identity'`` or ``'logit'``)  
 ``prs.lambda``      1 x n cell array of hyper-parameters for imposing smoothness prior on tuning functions  
 ``prs.alpha``       Significance level for comparing likelihood values  
 
 For more details about the role of these parameters, use ```help BuildGAM``` in MATLAB. Once you have ``xt``, ``yt``, and ``prs``, you can fit the model by running the following command:
 ```matlab
-models = BuildGAM(xt,yt,prs); % the output is saved is the variable called models
+models = BuildGAM(xt,yt,prs); % the output is saved in the variable called models
 ```
 
 And then use this command to plot the results:
 ```matlab
-PlotGAM(models,prs);
+PlotGAM(models,prs); % plot model likelihoods and marginal tuning functions
 ```
 
-Although meant for neural data, you can use this code in any setting where <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{y}" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{y}" title="\mathbf{y}" /></a> is a point process. Checkout ``demo.m`` for examples. [Write](mailto:jklakshm@bcm.edu) to me if you have questions.
+Although meant for neural data, you can use this code to model any point process <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{y}" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{y}" title="\mathbf{y}" /></a>. Checkout ``demo.m`` for examples. [Write](mailto:jklakshm@bcm.edu) to me if you have questions.
 
 
 ## Acknowledgements
-This implementation builds on the LNP model described in [Hardcastle et al.](http://www.cell.com/neuron/pdf/S0896-6273(17)30237-4.pdf), available [here](https://github.com/GiocomoLab/ln-model-of-mec-neurons) for MEC neurons.
+This implementation builds on the LNP model described in [Hardcastle et al., 2017](http://www.cell.com/neuron/pdf/S0896-6273(17)30237-4.pdf), available [here](https://github.com/GiocomoLab/ln-model-of-mec-neurons) for MEC neurons.

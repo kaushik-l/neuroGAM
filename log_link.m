@@ -1,4 +1,4 @@
-function [f, df, d2f] = LNP_model(param,data,Xtype,Nprs,Lambda)
+function [f, df, d2f] = log_link(param,data,Xtype,Nprs,Lambda)
 
 X = data{1}; % subset of X
 Y = data{2}; % number of spikes

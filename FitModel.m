@@ -1,4 +1,4 @@
-function [testFit,trainFit,param_mean] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda)
+function [testFit,trainFit,param_mean] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda,linkfunc,invlinkfunc)
 
 %% Description
 % This function will section the data into nfolds different portions. Each 
@@ -42,19 +42,30 @@ for k = 1:nfolds
     train_spikes = y(train_ind);
     smooth_spikes_train = conv(train_spikes,h,'same'); %returns vector same size as original
     smooth_fr_train = smooth_spikes_train./dt;
-    train_X = X(train_ind,:);
-    
-    % train the model
-    opts = optimset('Gradobj','on','Hessian','on','Display','off');    
+    train_X = X(train_ind,:);    
     data{1} = train_X; data{2} = train_spikes;
-    if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
-    else, init_param = param; end % use final parameters from previous training set
     
-    param = fminunc(@(param) LNP_model(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of LNP model
+    % train the model    
+    if strcmp(linkfunc,'log')
+        opts = optimset('Gradobj','on','Hessian','on','Display','off');
+        if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
+        else, init_param = param; end % use final parameters from previous training set
+        param = fminunc(@(param) log_link(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of log-link model
+    elseif strcmp(linkfunc,'identity')
+        opts = optimoptions(@fmincon,'Gradobj','on','Hessian','on','Display','off','Algorithm','trust-region-reflective');
+        if k == 1, init_param = rand(nprs, 1); % initialise random parameters for the first training set
+        else, init_param = param; end % use final parameters from previous training set
+        param = fmincon(@(param) identity_link(param,data,Xtype,Nprs,Lambda),init_param,[],[],[],[],zeros(nprs,1),[],[],opts); % fit parameters of identity-link model
+    elseif strcmp(linkfunc,'logit')
+        opts = optimset('GradObj','on','Hessian','on','Display','off');
+        if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
+        else, init_param = param; end % use final parameters from previous training set
+        param = fminunc(@(param) logit_link(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of logit-link model
+    end
     
     %% %%%%%%%%%%% TEST DATA %%%%%%%%%%%%%
     % compute model predicted firing rate
-    fr_hat_test = exp(test_X * param)/dt;
+    fr_hat_test = invlinkfunc(test_X * param)/dt;
     smooth_fr_hat_test = conv(fr_hat_test,h,'same'); %returns vector same size as original
     
     % variance explained
@@ -66,8 +77,8 @@ for k = 1:nfolds
     correlation_test = corr(smooth_fr_test,smooth_fr_hat_test,'type','Pearson');
     
     % log-likelihood increase from "mean firing rate model" - NO SMOOTHING
-    r = exp(test_X * param); n = test_spikes; meanFR_test = nanmean(test_spikes);     
-    log_llh_test_model = nansum(r-n.*log(r)+log(factorial(n)))/sum(n); %note: log(gamma(n+1)) will be unstable if n is large (which it isn't here)
+    r_test = invlinkfunc(test_X * param); n = test_spikes; meanFR_test = nanmean(test_spikes);
+    log_llh_test_model = nansum(r_test-n.*log(r_test)+log(factorial(n)))/sum(n); %note: log(gamma(n+1)) will be unstable if n is large (which it isn't here)
     log_llh_test_mean = nansum(meanFR_test-n.*log(meanFR_test)+log(factorial(n)))/sum(n);
     log_llh_test = (-log_llh_test_model + log_llh_test_mean); % nats/spike
     log_llh_test = log_llh_test/log(2); % convert to bits/spike
@@ -79,8 +90,8 @@ for k = 1:nfolds
     testFit(k,:) = [varExplain_test correlation_test log_llh_test mse_test sum(n) numel(test_ind)];
     
     %% %%%%%%%%%%% TRAINING DATA %%%%%%%%%%%
-    % compute the firing rate
-    fr_hat_train = exp(train_X * param)/dt;
+    % compute the smooth firing rate
+    fr_hat_train = invlinkfunc(train_X * param)/dt;
     smooth_fr_hat_train = conv(fr_hat_train,h,'same'); %returns vector same size as original
     
     % variance explained
@@ -92,7 +103,7 @@ for k = 1:nfolds
     correlation_train = corr(smooth_fr_train,smooth_fr_hat_train,'type','Pearson');
     
     % log-likelihood
-    r_train = exp(train_X * param); n_train = train_spikes; meanFR_train = nanmean(train_spikes);   
+    r_train = invlinkfunc(train_X * param); n_train = train_spikes; meanFR_train = nanmean(train_spikes);   
     log_llh_train_model = nansum(r_train-n_train.*log(r_train)+log(gamma(n_train+1)))/sum(n_train);
     log_llh_train_mean = nansum(meanFR_train-n_train.*log(meanFR_train)+log(gamma(n_train+1)))/sum(n_train);
     log_llh_train = (-log_llh_train_model + log_llh_train_mean);

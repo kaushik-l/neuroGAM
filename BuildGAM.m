@@ -31,8 +31,7 @@ function models = BuildGAM(xt,yt,prs)
 %                 used for converting weights f_i to firing rate
 % prs.filtwidth : Width of gaussian filter (in samples) to smooth spike train. 
 %                 only used for computing % variance explained
-% prs.modelname : Name of the model ('LNP','LP' or 'Logistic').
-%                 specifies the type of link function g: 'LNP' == log, 'LP' == identity, and 'Logistic' == logit
+% prs.linkfunc  : Name of the link function g ('log','identity' or 'logit').
 % prs.lambda    : 1 x N cell array of hyper-parameters for imposing smoothness prior on tuning functions. 
 %                 use 0 to impose no prior
 % prs.alpha     : Significance level for comparing likelihood values. 
@@ -62,16 +61,25 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,modelname,lambda,alpha] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
-if isempty(modelname), modelname = 'LNP'; end
+if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
 if isempty(nbins), nbins = cell(1,nvars); nbins(:) = {10}; end
 if isempty(binrange), binrange = []; end
 if isempty(dt), dt = 1; end
+
+%% compute inverse-link function
+if strcmp(linkfunc,'log')
+    invlinkfunc = @(x) exp(x);
+elseif strcmp(linkfunc,'identity')
+    invlinkfunc = @(x) x;
+elseif strcmp(linkfunc,'logit')
+    invlinkfunc = @(x) exp(x)./(1 + exp(x));
+end
 
 %% define bin range
 if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
@@ -108,13 +116,11 @@ h = exp(-t.^2/(2*filtwidth^2));
 h = h/sum(h);
 
 %% fit all models
-fprintf(['...... Fitting ' modelname ' model\n']);
+fprintf(['...... Fitting ' linkfunc '-link model\n']);
 models.class = Model; models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
 for n = 1:nModels
     fprintf('\t- Fitting model %d of %d\n', n, nModels);
-    if strcmp(modelname,'LNP')
-        [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n});
-    end
+    [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n},linkfunc,invlinkfunc);
 end
 models.x = xc;
 
@@ -132,9 +138,9 @@ models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.cl
 for i=1:nModels
     for j=1:nvars
         if models.class{i}(j)
-            if isempty(models.wts{i}(j~=1:nvars & models.class{i})), gain_factor = 1;
-            else, gain_factor = prod(cellfun(@(x,y) sum(exp(x).*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
-            models.marginaltunings{i}{j} = (exp(models.wts{i}{j})/dt)*gain_factor;
+            if isempty(models.wts{i}(j~=1:nvars & models.class{i})), other_factors = 0;
+            else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
+            models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;
             if strcmp(xtype{j},'2D'), models.marginaltunings{i}{j} = reshape(models.marginaltunings{i}{j},nbins{j}); end
         else, models.marginaltunings{i}{j} = []; 
         end

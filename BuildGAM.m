@@ -65,12 +65,16 @@ prs = struct2cell(prs);
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
+if isempty(lambda), lambda = cell(1,nvars); lambda(:) = {5e1}; end
 if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
 if isempty(nbins), nbins = cell(1,nvars); nbins(:) = {10}; end
 if isempty(binrange), binrange = []; end
 if isempty(dt), dt = 1; end
+
+%% define bin range
+if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -80,9 +84,6 @@ elseif strcmp(linkfunc,'identity')
 elseif strcmp(linkfunc,'logit')
     invlinkfunc = @(x) exp(x)./(1 + exp(x));
 end
-
-%% define bin range
-if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
 
 %% encode variables in 1-hot format
 x = cell(1,nvars); % 1-hot representation of xt

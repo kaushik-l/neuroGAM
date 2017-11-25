@@ -57,4 +57,8 @@ elseif strcmp(vartype,'1D')
     J = lambda*0.5*param'*DD1*param;
     G = lambda*DD1*param;
     H = lambda*DD1;
+elseif strcmp(vartype,'0D')
+    J = lambda*sum(abs(param));
+    G = lambda*sign(param);
+    H = diag(zeros(1,length(param)));
 end

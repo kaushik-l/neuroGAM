@@ -21,9 +21,7 @@ for i=1:nvars
         % significance test :: best new candidate vs current best model
         [pval,~] = signrank(LLvals(:,bestcandidate),LLvals(:,bestmodel),'tail','right');
         if pval>alpha, break;
-        else, bestmodel = bestcandidate; end
+        else, bestmodel = find(bestcandidate); end
     end     
 end
-
-bestmodel = find(bestmodel);
 if (isempty(bestmodel) || signrank(LLvals(:,bestmodel),0,'tail','right') > alpha), bestmodel = nan; end % best model better than null model?

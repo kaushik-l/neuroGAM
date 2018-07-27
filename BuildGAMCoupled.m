@@ -56,26 +56,44 @@ function models = BuildGAMCoupled(xt,yt,Yt,prs)
 % models.marginaltunings    : M x 1 cell array of tuning functions for each of the M model variants.
 %                             tuning to x_i is empty if x_i was not included in the model variant
 
+%% Run the uncoupled GAM model to determine components of xt that drive response
+Uncoupledmodel = BuildGAM(xt,yt,prs);
+bestUncoupledmodel = Uncoupledmodel.bestmodel;
+if ~isnan(bestUncoupledmodel), bestinputs = Uncoupledmodel.class{Uncoupledmodel.bestmodel};
+else, bestinputs = true(1,size(xt,2)); end
+xt = xt(:,bestinputs); % use only the best inputs
+
 %% number of input variables
 nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,beta,alpha] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
-if isempty(beta), beta = 5e1; end
 if isempty(lambda), lambda = cell(1,nvars); lambda(:) = {5e1}; end
 if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
-if isempty(nbins), nbins = cell(1,nvars); nbins(:) = {10}; end
-if isempty(binrange), binrange = []; end
+if isempty(nbins)
+    nbins = cell(1,nvars); nbins(:) = {10}; % default: 10 bins
+    nbins(strcmp(xtype,'2D')) = {[10,10]};
+end
+if isempty(binrange)
+    binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1);
+    binrange(strcmp(xtype,'event')) = {[-0.36;0.36]}; % default: -360ms to 360ms temporal kernel
+end
 if isempty(dt), dt = 1; end
+% express bin range in units of dt for temporal kernels
+indx = find(strcmp(xtype,'event'));
+for i=indx, binrange{i} = round(binrange{i}/dt); end
 
-%% define bin range
-if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
+%% select only the best inputs
+xtype = xtype(bestinputs);
+nbins = nbins(bestinputs);
+binrange = binrange(bestinputs);
+lambda = lambda(bestinputs);
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -86,74 +104,61 @@ elseif strcmp(linkfunc,'logit')
     invlinkfunc = @(x) exp(x)./(1 + exp(x));
 end
 
-%% encode input variables in 1-hot format
+%% encode variables in 1-hot format
 x = cell(1,nvars); % 1-hot representation of xt
 xc = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
+    Px{i} = sum(x{i})/size(x{i},1); 
+    if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
-Px = cellfun(@(x) sum(x)/sum(x(:)),x,'UniformOutput',false); % probability of being each state (used for marginalization in the end)
 
 %% binarise spikes and combine them with input variables
 Y = double(Yt>0); % (bins with >1 spike counted as 1 spike ---> if this matters, use small enough bins)
-x = [x Y];
-Px = [Px sum(Y)/size(Y,1)];
-xtype = [xtype {'0D'}];
-nprs = [nprs {size(Y,2)}];
-lambda = [lambda beta];
-nvars = nvars + 1;
+Ytype = {'0D'}; % spikes are 0-dimensional as they can take only one value (1)
+nprsY = {size(Y,2)};
+lambdaY = {5e0};
 
-%% define model combinations to fit
-nModels = sum(arrayfun(@(k) nchoosek(nvars,k), 1:nvars));
-X = cell(nModels,1);
-Xtype = cell(nModels,1);
-Nprs = cell(nModels,1);
-Lambda = cell(nModels,1);
-ModelCombo = arrayfun(@(k) mat2cell(nchoosek(1:nvars,k),ones(nchoosek(nvars,k),1)),1:nvars,'UniformOutput',false);
-ModelCombo = vertcat(ModelCombo{:});
-Model = cell(nModels,1); for i=1:nModels, Model{i} = false(1,nvars); end
-for i=1:nModels
-    Model{i}(ModelCombo{i})=true;
-    X{i} = cell2mat(x(Model{i})); % X{i} stores inputs for the i^th model
-    Xtype{i} = xtype(Model{i});
-    Nprs{i} = cell2mat(nprs(Model{i}));
-    Lambda{i} = lambda(Model{i});
-end
+%% combine input variables with spikes from other neurons
+X = [cell2mat(x) Y];
+Px = [Px sum(Y)/size(Y,1)];
+Xtype = [xtype Ytype];
+nprs = cell2mat([nprs nprsY]);
+Lambda = [lambda lambdaY];
+nvars = nvars + 1;
 
 %% define filter to smooth the firing rate
 t = linspace(-2*filtwidth,2*filtwidth,4*filtwidth + 1);
 h = exp(-t.^2/(2*filtwidth^2));
 h = h/sum(h);
 
-%% fit all models
-fprintf(['...... Fitting ' linkfunc '-link model\n']);
-models.class = Model; models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
-for n = 1:nModels
-    fprintf('\t- Fitting model %d of %d\n', n, nModels);
-    [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n},linkfunc,invlinkfunc);
-end
-models.x = xc;
-
-%% select best model
-fprintf('...... Performing forward model selection\n');
-testFit = cell2mat(models.testFit);
-nrows = size(testFit,1);
-LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
-models.bestmodel = ForwardSelect(Model,LLvals,alpha);
+%% fit coupled models
+fprintf(['...... Fitting fully coupled model with ' linkfunc '-link\n']);
+[Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts] = FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
+Coupledmodel.x = [xc 1:size(Yt,2)];
 
 %% match weights 'wts' to corresponding inputs 'x'
-models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.class,'UniformOutput',false);
+Coupledmodel.wts = mat2cell(Coupledmodel.wts,1,nprs);
+
+%% compare uncoupled model vs coupled model
+if ~isnan(bestUncoupledmodel), UncoupledtestFit = Uncoupledmodel.testFit{bestUncoupledmodel};
+else, UncoupledtestFit = Uncoupledmodel.testFit{end}; end
+CoupledtestFit = Coupledmodel.testFit;
+UncoupledLLvals = UncoupledtestFit(:,3); % 3rd column contains likelihood values
+CoupledLLvals = CoupledtestFit(:,3);
+[pval1,~] = signrank(CoupledLLvals,UncoupledLLvals,'tail','right');
+[pval2,~] = signrank(CoupledLLvals,UncoupledLLvals,'tail','left');
+if (pval1<alpha || pval2<alpha), models.LLRcoupling = mean(CoupledLLvals) - mean(UncoupledLLvals);
+else, models.LLRcoupling = 0; end
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
-for i=1:nModels
-    for j=1:nvars
-        if models.class{i}(j)
-            if isempty(models.wts{i}(j~=1:nvars & models.class{i})), other_factors = 0;
-            else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
-            models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;
-            if strcmp(xtype{j},'2D'), models.marginaltunings{i}{j} = reshape(models.marginaltunings{i}{j},nbins{j}); end
-        else, models.marginaltunings{i}{j} = []; 
-        end
-    end
+for j=1:nvars
+    other_factors = sum(cellfun(@(x,y) sum(x.*y), Coupledmodel.wts(1:nvars ~= j), Px(1:nvars ~= j)));
+    Coupledmodel.marginaltunings{j} = invlinkfunc(Coupledmodel.wts{j} + other_factors)/dt;
+    if strcmp(Xtype{j},'2D'), Coupledmodel.marginaltunings{j} = reshape(Coupledmodel.marginaltunings{j},nprs(j)); end
 end
+
+%% output
+models.Coupledmodel = Coupledmodel;
+models.Uncoupledmodel = Uncoupledmodel;

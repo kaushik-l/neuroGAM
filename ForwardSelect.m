@@ -8,8 +8,8 @@ function bestmodel = ForwardSelect(Model,LLvals,alpha)
 %%
 Model = cell2mat(Model)';
 nvars = size(Model,1);
-for i=1:nvars
-    if i==1 % select the best 1-variable model
+for i=min(sum(Model)):max(sum(Model))
+    if i==min(sum(Model)) % select the best minimum-variable model
         bestmodel = find(nanmean(LLvals) == max(nanmean(LLvals(:,sum(Model)==i))));
         if isempty(bestmodel)
             break; 

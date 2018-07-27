@@ -20,12 +20,14 @@ function models = BuildGAM(xt,yt,prs)
 % structure are as follows and must be entered in this order.
 % prs.varname   : 1 x N cell array of names of the input variables.
 %                 only used for labeling plots
-% prs.vartype   : 1 x N cell array of types ('1D','1Dcirc' or '2D') of the input variables. 
+% prs.vartype   : 1 x N cell array of types ('1D','1Dcirc','2D' or 'event') of the input variables. 
 %                 used for applying smoothness penalty on tuning functions
 % prs.nbins     : 1 x N cell array of number of bins to discretise input variables. 
-%                 determines the resolution of the tuning curves
-% prs.binrange  : 1 x N cell array of 2 x 1 vectors specifying lower and upper bounds of input variables. 
-%                 used to determine bin edges
+%                 determines the resolution of the tuning curves. If the variable type is 'event', nbins
+%                 specifies the number of bins to discretise the temporal kernel corresponding to that event.
+% prs.binrange  : 1 x N cell array of 2 x 1 vectors specifying lower and upper bounds of input variables.
+%                 used to determine bin edges. If the variable type is 'event', the bounds specify to 
+%                 the timerange spanned by the temporal kernel corresponding to that event.
 % prs.nfolds    : Number of folds for cross-validation.
 % prs.dt        : Time between consecutive observation samples. 
 %                 used for converting weights f_i to firing rate
@@ -61,7 +63,7 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
@@ -69,12 +71,20 @@ if isempty(lambda), lambda = cell(1,nvars); lambda(:) = {5e1}; end
 if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
-if isempty(nbins), nbins = cell(1,nvars); nbins(:) = {10}; end
+if isempty(nbins)
+    nbins = cell(1,nvars); nbins(:) = {10}; % default: 10 bins
+    nbins(strcmp(xtype,'2D')) = {[10,10]};
+end
 if isempty(binrange), binrange = []; end
 if isempty(dt), dt = 1; end
-
-%% define bin range
-if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
+% define bin range
+if isempty(binrange)
+    binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1);
+    binrange(strcmp(xtype,'event')) = {[-0.36;0.36]}; % default: -360ms to 360ms temporal kernel
+end
+% express bin range in units of dt for temporal kernels
+indx = find(strcmp(xtype,'event'));
+for i=indx, binrange{i} = round(binrange{i}/dt); end
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -91,8 +101,9 @@ xc = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
+    Px{i} = sum(x{i})/size(x{i},1); 
+    if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
-Px = cellfun(@(x) sum(x)/sum(x(:)),x,'UniformOutput',false); % probability of being each state (used for marginalization in the end)
 
 %% define model combinations to fit
 nModels = sum(arrayfun(@(k) nchoosek(nvars,k), 1:nvars));
@@ -102,6 +113,8 @@ Nprs = cell(nModels,1);
 Lambda = cell(nModels,1);
 ModelCombo = arrayfun(@(k) mat2cell(nchoosek(1:nvars,k),ones(nchoosek(nvars,k),1)),1:nvars,'UniformOutput',false);
 ModelCombo = vertcat(ModelCombo{:});
+ValidCombos = cellfun(@(x) isempty(setdiff(find(varchoose),x)),ModelCombo);
+ModelCombo = ModelCombo(ValidCombos); nModels = length(ModelCombo);
 Model = cell(nModels,1); for i=1:nModels, Model{i} = false(1,nvars); end
 for i=1:nModels
     Model{i}(ModelCombo{i})=true;
@@ -139,7 +152,7 @@ models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.cl
 for i=1:nModels
     for j=1:nvars
         if models.class{i}(j)
-            if isempty(models.wts{i}(j~=1:nvars & models.class{i})), other_factors = 0;
+            if isempty(models.wts{i}(j~=1:nvars & models.class{i})) || (strcmp(xtype{j},'event') && all(strcmp(xtype(j~=1:nvars & models.class{i}),'event'))), other_factors = 0; % events don't overlap => need not marginalise
             else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
             models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;
             if strcmp(xtype{j},'2D'), models.marginaltunings{i}{j} = reshape(models.marginaltunings{i}{j},nbins{j}); end

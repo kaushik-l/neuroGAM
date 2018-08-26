@@ -68,11 +68,12 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,~] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
-if isempty(lambda), lambda = cell(1,nvars); lambda(:) = {5e1}; end
+if isempty(lambda), lambda = cell(1,nvars+1); lambda(:) = {5e1}; % if user did not provide hyperparameters
+elseif length(lambda) == nvars, lambda(nvars+1) = {5e1}; end % if user did not provide a hyperparameter for coupling
 if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
@@ -93,7 +94,9 @@ for i=indx, binrange{i} = round(binrange{i}/dt); end
 xtype = xtype(bestinputs);
 nbins = nbins(bestinputs);
 binrange = binrange(bestinputs);
+lambdaY = lambda(end);
 lambda = lambda(bestinputs);
+
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -116,9 +119,8 @@ end
 
 %% binarise spikes and combine them with input variables
 Y = double(Yt>0); % (bins with >1 spike counted as 1 spike ---> if this matters, use small enough bins)
-Ytype = {'0D'}; % spikes are 0-dimensional as they can take only one value (1)
+Ytype = {'event'}; % spikes are events
 nprsY = {size(Y,2)};
-lambdaY = {5e0};
 
 %% combine input variables with spikes from other neurons
 X = [cell2mat(x) Y];

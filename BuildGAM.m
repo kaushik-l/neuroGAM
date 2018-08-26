@@ -38,6 +38,11 @@ function models = BuildGAM(xt,yt,prs)
 %                 use 0 to impose no prior
 % prs.alpha     : Significance level for comparing likelihood values. 
 %                 used for model selection
+% prs.varchoose : 1 x N array of 1s and 0s indicating the inclusion status of each variable. Use 1 to forcibly
+%                 include a variable in the bestmodel, 0 to let the method determine when to include a variable
+% prs.method    : Method for selecting the best model ('Forward' / 'Backward' / 'FastForward' / 'FastBackward')
+%                 'Forward' uses forward-selection, 'Backward' uses backward-elimination
+%                 'FastForward' and 'FastBackward' are the corresponding fast implementations (fit a subset rather than all models)
 %
 % OUTPUT:
 % models is a structure containing the results of fitting different model
@@ -63,7 +68,8 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+method = lower(method);
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
@@ -105,53 +111,44 @@ for i=1:nvars
     if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
 
-%% define model combinations to fit
-nModels = sum(arrayfun(@(k) nchoosek(nvars,k), 1:nvars));
-X = cell(nModels,1);
-Xtype = cell(nModels,1);
-Nprs = cell(nModels,1);
-Lambda = cell(nModels,1);
-ModelCombo = arrayfun(@(k) mat2cell(nchoosek(1:nvars,k),ones(nchoosek(nvars,k),1)),1:nvars,'UniformOutput',false);
-ModelCombo = vertcat(ModelCombo{:});
-ValidCombos = cellfun(@(x) isempty(setdiff(find(varchoose),x)),ModelCombo);
-ModelCombo = ModelCombo(ValidCombos); nModels = length(ModelCombo);
-Model = cell(nModels,1); for i=1:nModels, Model{i} = false(1,nvars); end
-for i=1:nModels
-    Model{i}(ModelCombo{i})=true;
-    X{i} = cell2mat(x(Model{i})); % X{i} stores inputs for the i^th model
-    Xtype{i} = xtype(Model{i});
-    Nprs{i} = cell2mat(nprs(Model{i}));
-    Lambda{i} = lambda(Model{i});
-end
-
 %% define filter to smooth the firing rate
 t = linspace(-2*filtwidth,2*filtwidth,4*filtwidth + 1);
 h = exp(-t.^2/(2*filtwidth^2));
 h = h/sum(h);
 
-%% fit all models
-fprintf(['...... Fitting ' linkfunc '-link model\n']);
-models.class = Model; models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
-for n = 1:nModels
-    fprintf('\t- Fitting model %d of %d\n', n, nModels);
-    [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n},linkfunc,invlinkfunc);
+%% use appropriate method to fit the model
+switch method
+    case {'forward','backward'}
+        %% define model combinations to fit
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);        
+        %% fit all models
+        models = FitModels(Model,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);        
+        %% select best model
+        fprintf('...... Performing model selection\n');
+        testFit = cell2mat(models.testFit); nrows = size(testFit,1);
+        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+        if strcmp(method,'forward'), models.bestmodel = ForwardSelect(Model,LLvals,alpha);
+        elseif strcmp(method,'backward'), models.bestmodel = BackwardEliminate(Model,LLvals,alpha); end
+    case {'fastforward'}
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        models.class = Model; 
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        models = FastForwardSelect(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
+    case {'fastbackward'}
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        models.class = Model; 
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        models = FastBackwardEliminate(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
 end
-models.x = xc;
-
-%% select best model
-fprintf('...... Performing forward model selection\n');
-testFit = cell2mat(models.testFit);
-nrows = size(testFit,1);
-LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
-models.bestmodel = ForwardSelect(Model,LLvals,alpha);
 
 %% match weights 'wts' to corresponding inputs 'x'
 models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.class,'UniformOutput',false);
+models.x = xc;
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
-for i=1:nModels
+for i=1:numel(Model)
     for j=1:nvars
-        if models.class{i}(j)
+        if models.class{i}(j) && ~all(isnan(models.wts{i}{j}))
             if isempty(models.wts{i}(j~=1:nvars & models.class{i})) || (strcmp(xtype{j},'event') && all(strcmp(xtype(j~=1:nvars & models.class{i}),'event'))), other_factors = 0; % events don't overlap => need not marginalise
             else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
             models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;

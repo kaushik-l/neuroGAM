@@ -38,23 +38,24 @@ where <a href="https://www.codecogs.com/eqnedit.php?latex=P(x_{kj}=1)" target="_
 
 To fit the model using your data, you need to use the function ``BuildGAM``. ``BuildGAM`` takes in three inputs ``xt``, ``yt``, and ``prs``.
 
-``xt`` must be an n x 1 cell array containing the values of input variables where n is the total number of input variables. Each cell in ``xt`` corresponds to one input variable. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is a one dimensional variable, ``xt{i}`` must be a T x 1 vector, 
-T being the total number of observations. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is two-dimensional e.g. position, then the corresponding ``xt{i}`` must be a T x 2 array, with the two columns corresponding to the two dimensions.
+``xt`` must be an n x 1 cell array containing the values of input variables (continuous-valued and/or binary events) where n is the total number of input variables. Each cell in ``xt`` corresponds to one input variable. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is a one dimensional variable, ``xt{i}`` must be a T x 1 vector, T being the total number of observations. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is two-dimensional e.g. position, then the corresponding ``xt{i}`` must be a T x 2 array, with the two columns corresponding to the two dimensions. If <a href="http://www.codecogs.com/eqnedit.php?latex=\mathbf{x}_i" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\mathbf{x}_i" title="\mathbf{x}_i" /></a> is a binary event, ``xt{i}`` must be a T x 1 vector whose elements are equal to ``1`` at all the bins at which that particular event occurred and ``0`` everywhere else. If you wish to fit spike-history kernel, make one of the cells in ``xt`` equal to the response ``yt`` (see below) --- note that in this case n will be the total number of inputs variables plus 1.
 
 ``yt`` must be a T x 1 array of spike counts. It is advisable to record your observations using a sampling rate of at least ``50Hz`` so that ``yt`` is mostly comprised of 0s and 1s.
 
 ``prs`` is a structure specifying analysis parameters. The fields of this structure **must be created in the following order**:
 
 ``prs.varname``     1 x n cell array of names of the input variables (only used for labeling plots)  
-``prs.vartype``     1 x n cell array of types (``'1D'``,``'1Dcirc'`` or ``'2D'``) of the input variables  
-``prs.nbins``       1 x n cell array of number of bins to discretise input variables  
-``prs.binrange``    1 x n cell array of 2 x 1 vectors specifying lower and upper bounds of the input variables  
+``prs.vartype``     1 x n cell array of types (``'1D'``,``'1Dcirc'``,``'2D'`` or ``'event'``) of the input variables  
+``prs.nbins``       1 x n cell array of number of bins to discretise input (for continuous-valued) or the number of bins to discretise the temporal filter (for binary events)
+``prs.binrange``    1 x n cell array of 2 x 1 vectors specifying lower & upper bounds of the input (for continuous-valued) or lower & upper bounds of the desired time window around the input (for binary events)
 ``prs.nfolds``      Number of folds for cross-validation  
 ``prs.dt``          Time (in secs) between consecutive observation samples (1/samplingfrequency)  
 ``prs.filtwidth``   Width of gaussian filter (in samples) to smooth spike train  
 ``prs.linkfunc``    Choice of link function (``'log'``,``'identity'`` or ``'logit'``)  
 ``prs.lambda``      1 x n cell array of hyper-parameters for imposing smoothness prior on tuning functions  
-``prs.alpha``       Significance level for comparing likelihood values  
+``prs.alpha``       Significance level for comparing likelihood values
+``prs.varchoose``  1 x n array of ones and zeros indicating the inclusion status of each variable. Use ``1`` to forcibly include a variable in the **bestmodel**, ``0`` to let the method determine whether to include a variable
+``prs.method``  Method for selecting the best model ``'Forward'``, ``'Backward'``, ``'FastForward'`` or ``'FastBackward'``
 
 For more details about the role of these parameters, use ```help BuildGAM``` in MATLAB. Once you have ``xt``, ``yt``, and ``prs``, you can fit the model by running the following command:
 ```matlab

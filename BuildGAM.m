@@ -20,12 +20,14 @@ function models = BuildGAM(xt,yt,prs)
 % structure are as follows and must be entered in this order.
 % prs.varname   : 1 x N cell array of names of the input variables.
 %                 only used for labeling plots
-% prs.vartype   : 1 x N cell array of types ('1D','1Dcirc' or '2D') of the input variables. 
+% prs.vartype   : 1 x N cell array of types ('1D','1Dcirc','2D' or 'event') of the input variables. 
 %                 used for applying smoothness penalty on tuning functions
 % prs.nbins     : 1 x N cell array of number of bins to discretise input variables. 
-%                 determines the resolution of the tuning curves
-% prs.binrange  : 1 x N cell array of 2 x 1 vectors specifying lower and upper bounds of input variables. 
-%                 used to determine bin edges
+%                 determines the resolution of the tuning curves. If the variable type is 'event', nbins
+%                 specifies the number of bins to discretise the temporal kernel corresponding to that event.
+% prs.binrange  : 1 x N cell array of 2 x 1 vectors specifying lower and upper bounds of input variables.
+%                 used to determine bin edges. If the variable type is 'event', the bounds specify to 
+%                 the timerange spanned by the temporal kernel corresponding to that event.
 % prs.nfolds    : Number of folds for cross-validation.
 % prs.dt        : Time between consecutive observation samples. 
 %                 used for converting weights f_i to firing rate
@@ -36,6 +38,11 @@ function models = BuildGAM(xt,yt,prs)
 %                 use 0 to impose no prior
 % prs.alpha     : Significance level for comparing likelihood values. 
 %                 used for model selection
+% prs.varchoose : 1 x N array of 1s and 0s indicating the inclusion status of each variable. Use 1 to forcibly
+%                 include a variable in the bestmodel, 0 to let the method determine when to include a variable
+% prs.method    : Method for selecting the best model ('Forward' / 'Backward' / 'FastForward' / 'FastBackward')
+%                 'Forward' uses forward-selection, 'Backward' uses backward-elimination
+%                 'FastForward' and 'FastBackward' are the corresponding fast implementations (fit a subset rather than all models)
 %
 % OUTPUT:
 % models is a structure containing the results of fitting different model
@@ -61,16 +68,29 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha] = deal(prs{:});
+[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+method = lower(method);
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
+if isempty(lambda), lambda = cell(1,nvars); lambda(:) = {5e1}; end
 if isempty(linkfunc), linkfunc = 'log'; end
 if isempty(filtwidth), filtwidth = 3; end
 if isempty(nfolds), nfolds = 10; end
-if isempty(nbins), nbins = cell(1,nvars); nbins(:) = {10}; end
+if isempty(nbins)
+    nbins = cell(1,nvars); nbins(:) = {10}; % default: 10 bins
+    nbins(strcmp(xtype,'2D')) = {[10,10]};
+end
 if isempty(binrange), binrange = []; end
 if isempty(dt), dt = 1; end
+% define bin range
+if isempty(binrange)
+    binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1);
+    binrange(strcmp(xtype,'event')) = {[-0.36;0.36]}; % default: -360ms to 360ms temporal kernel
+end
+% express bin range in units of dt for temporal kernels
+indx = find(strcmp(xtype,'event'));
+for i=indx, binrange{i} = round(binrange{i}/dt); end
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -81,33 +101,14 @@ elseif strcmp(linkfunc,'logit')
     invlinkfunc = @(x) exp(x)./(1 + exp(x));
 end
 
-%% define bin range
-if isempty(binrange), binrange = mat2cell([min(cell2mat(xt));max(cell2mat(xt))],2,strcmp(xtype,'2D')+1); end
-
 %% encode variables in 1-hot format
 x = cell(1,nvars); % 1-hot representation of xt
 xc = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
-end
-Px = cellfun(@(x) sum(x)/sum(x(:)),x,'UniformOutput',false); % probability of being each state (used for marginalization in the end)
-
-%% define model combinations to fit
-nModels = sum(arrayfun(@(k) nchoosek(nvars,k), 1:nvars));
-X = cell(nModels,1);
-Xtype = cell(nModels,1);
-Nprs = cell(nModels,1);
-Lambda = cell(nModels,1);
-ModelCombo = arrayfun(@(k) mat2cell(nchoosek(1:nvars,k),ones(nchoosek(nvars,k),1)),1:nvars,'UniformOutput',false);
-ModelCombo = vertcat(ModelCombo{:});
-Model = cell(nModels,1); for i=1:nModels, Model{i} = false(1,nvars); end
-for i=1:nModels
-    Model{i}(ModelCombo{i})=true;
-    X{i} = cell2mat(x(Model{i})); % X{i} stores inputs for the i^th model
-    Xtype{i} = xtype(Model{i});
-    Nprs{i} = cell2mat(nprs(Model{i}));
-    Lambda{i} = lambda(Model{i});
+    Px{i} = sum(x{i})/size(x{i},1); 
+    if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
 
 %% define filter to smooth the firing rate
@@ -115,30 +116,40 @@ t = linspace(-2*filtwidth,2*filtwidth,4*filtwidth + 1);
 h = exp(-t.^2/(2*filtwidth^2));
 h = h/sum(h);
 
-%% fit all models
-fprintf(['...... Fitting ' linkfunc '-link model\n']);
-models.class = Model; models.testFit = cell(nModels,1); models.trainFit = cell(nModels,1); models.wts = cell(nModels,1);
-for n = 1:nModels
-    fprintf('\t- Fitting model %d of %d\n', n, nModels);
-    [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X{n},Xtype{n},Nprs{n},yt,dt,h,nfolds,Lambda{n},linkfunc,invlinkfunc);
+%% use appropriate method to fit the model
+switch method
+    case {'forward','backward'}
+        %% define model combinations to fit
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);        
+        %% fit all models
+        models = FitModels(Model,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);        
+        %% select best model
+        fprintf('...... Performing model selection\n');
+        testFit = cell2mat(models.testFit); nrows = size(testFit,1);
+        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+        if strcmp(method,'forward'), models.bestmodel = ForwardSelect(Model,LLvals,alpha);
+        elseif strcmp(method,'backward'), models.bestmodel = BackwardEliminate(Model,LLvals,alpha); end
+    case {'fastforward'}
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        models.class = Model; 
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        models = FastForwardSelect(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
+    case {'fastbackward'}
+        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        models.class = Model; 
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        models = FastBackwardEliminate(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
 end
-models.x = xc;
-
-%% select best model
-fprintf('...... Performing forward model selection\n');
-testFit = cell2mat(models.testFit);
-nrows = size(testFit,1);
-LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
-models.bestmodel = ForwardSelect(Model,LLvals,alpha);
 
 %% match weights 'wts' to corresponding inputs 'x'
 models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.class,'UniformOutput',false);
+models.x = xc;
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
-for i=1:nModels
+for i=1:numel(Model)
     for j=1:nvars
-        if models.class{i}(j)
-            if isempty(models.wts{i}(j~=1:nvars & models.class{i})), other_factors = 0;
+        if models.class{i}(j) && ~all(isnan(models.wts{i}{j}))
+            if isempty(models.wts{i}(j~=1:nvars & models.class{i})) || (strcmp(xtype{j},'event') && all(strcmp(xtype(j~=1:nvars & models.class{i}),'event'))), other_factors = 0; % events don't overlap => need not marginalise
             else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
             models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;
             if strcmp(xtype{j},'2D'), models.marginaltunings{i}{j} = reshape(models.marginaltunings{i}{j},nbins{j}); end

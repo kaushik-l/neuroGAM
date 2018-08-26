@@ -1,4 +1,4 @@
-function bestmodel = ForwardSelect(Model,LLvals,alpha)
+function bestmodel = BackwardEliminate(Model,LLvals,alpha)
 
 %% Description
 % This function will select the best model variant using forward search. If
@@ -7,17 +7,16 @@ function bestmodel = ForwardSelect(Model,LLvals,alpha)
 
 %%
 Model = cell2mat(Model)';
-for i=min(sum(Model)):max(sum(Model))
-    if i==min(sum(Model)) % select the best minimum-variable model
-        bestmodel = find(nanmean(LLvals) == max(nanmean(LLvals(:,sum(Model)==i))));
-        if isempty(bestmodel), break; end
-    else % select the best i-variables model from among those containing the best i-1 variables
+for i=flip(unique(sum(Model)))
+    if i==max(sum(Model)) % select the all-variable model
+        bestmodel = find(sum(Model) == max(sum(Model)));
+    else % select the best model from among those containing i-1 variables
         indx1 = (sum(Model)==i); % all models containing i variables
-        indx2 = (sum(Model(Model(:,bestmodel)>0,:),1)==i-1);  % all models containing best i-1 variables
+        indx2 = (sum(Model(Model(:,bestmodel)>0,:),1)==i);  % all models containing variables in the current best model (with i+1 variables)
         bestcandidate = (nanmean(LLvals) == max(nanmean(LLvals(:,indx1 & indx2))));
         % significance test :: best new candidate vs current best model
-        [pval,~] = signrank(LLvals(:,bestcandidate),LLvals(:,bestmodel),'tail','right');
-        if pval>alpha, break;
+        [pval,~] = signrank(LLvals(:,bestcandidate),LLvals(:,bestmodel),'tail','left');
+        if pval<alpha, break;
         else, bestmodel = find(bestcandidate); end
     end     
 end

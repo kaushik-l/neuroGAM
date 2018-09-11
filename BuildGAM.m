@@ -100,6 +100,7 @@ elseif strcmp(linkfunc,'identity')
 elseif strcmp(linkfunc,'logit')
     invlinkfunc = @(x) exp(x)./(1 + exp(x));
 end
+fprintf(['...... Fitting ' linkfunc '-link model\n']);
 
 %% encode variables in 1-hot format
 x = cell(1,nvars); % 1-hot representation of xt
@@ -120,9 +121,9 @@ h = h/sum(h);
 switch method
     case {'forward','backward'}
         %% define model combinations to fit
-        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);        
+        Model = DefineModels(nvars,1:nvars,varchoose);        
         %% fit all models
-        models = FitModels(Model,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);        
+        models = FitModels(Model,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);        
         %% select best model
         fprintf('...... Performing model selection\n');
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
@@ -130,15 +131,15 @@ switch method
         if strcmp(method,'forward'), models.bestmodel = ForwardSelect(Model,LLvals,alpha);
         elseif strcmp(method,'backward'), models.bestmodel = BackwardEliminate(Model,LLvals,alpha); end
     case {'fastforward'}
-        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        Model = DefineModels(nvars,1:nvars,varchoose);
         models.class = Model; 
         for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
-        models = FastForwardSelect(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
+        models = FastForwardSelect(Model,models,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc,alpha);
     case {'fastbackward'}
-        [Model,X,Xtype,Nprs,Lambda] = DefineModels(nvars,1:nvars,varchoose,x,xtype,nprs,lambda);
+        Model = DefineModels(nvars,1:nvars,varchoose);
         models.class = Model; 
         for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
-        models = FastBackwardEliminate(Model,models,X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc,alpha);
+        models = FastBackwardEliminate(Model,models,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc,alpha);
 end
 
 %% match weights 'wts' to corresponding inputs 'x'
@@ -146,7 +147,7 @@ models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.cl
 models.x = xc;
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
-for i=1:numel(Model)
+for i=1:numel(models.class)
     for j=1:nvars
         if models.class{i}(j) && ~all(isnan(models.wts{i}{j}))
             if isempty(models.wts{i}(j~=1:nvars & models.class{i})) || (strcmp(xtype{j},'event') && all(strcmp(xtype(j~=1:nvars & models.class{i}),'event'))), other_factors = 0; % events don't overlap => need not marginalise

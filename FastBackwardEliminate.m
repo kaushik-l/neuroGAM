@@ -7,6 +7,8 @@ for i=flip(unique(sum(Modelmatrix)))
         models_temp = FitModels(Model(indx),x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
         models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; models.wts(indx,1) = models_temp.wts;
         models.bestmodel = find(sum(Modelmatrix) == max(sum(Modelmatrix)));
+        testFit = cell2mat(models.testFit); nrows = size(testFit,1);
+        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
     else % then, % select the best model from among those containing i-1 variables
         indx1 = (sum(Modelmatrix)==i); % all models containing i variables
         indx2 = (sum(Modelmatrix(Modelmatrix(:,models.bestmodel)>0,:),1)==i);  % all models containing variables in the current best model (with i+1 variables)

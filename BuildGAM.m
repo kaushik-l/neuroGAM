@@ -68,7 +68,7 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+[xname,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
 method = lower(method);
 
 %% define undefined analysis parameters
@@ -144,7 +144,7 @@ end
 
 %% match weights 'wts' to corresponding inputs 'x'
 models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.class,'UniformOutput',false);
-models.x = xc;
+models.x = xc; models.xname = xname; models.xtype = xtype;
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
 for i=1:numel(models.class)

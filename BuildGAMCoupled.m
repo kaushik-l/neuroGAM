@@ -68,7 +68,7 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[~,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+[xname,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
@@ -138,7 +138,7 @@ h = h/sum(h);
 %% fit coupled models
 fprintf(['...... Fitting fully coupled model with ' linkfunc '-link\n']);
 [Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts] = FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
-Coupledmodel.x = [xc 1:size(Yt,2)];
+Coupledmodel.x = [xc 1:size(Yt,2)]; Coupledmodel.xname = xname; Coupledmodel.xtype = xtype;
 
 %% match weights 'wts' to corresponding inputs 'x'
 Coupledmodel.wts = mat2cell(Coupledmodel.wts,1,nprs);

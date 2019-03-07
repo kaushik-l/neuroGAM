@@ -47,7 +47,8 @@ for k = 1:nfolds
     
     % train the model    
     if strcmp(linkfunc,'log')
-        opts = optimset('Gradobj','on','Hessian','on','Display','off');
+        %         opts = optimset('Gradobj','on','Hessian','on','Display','off');
+        opts = optimset('Gradobj','on','Hessian','on','Display','off','Algorithm','trust-region'); % >= MATLAB 2018
         if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
         else, init_param = param; end % use final parameters from previous training set
         param = fminunc(@(param) log_link(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of log-link model
@@ -57,7 +58,8 @@ for k = 1:nfolds
         else, init_param = param; end % use final parameters from previous training set
         param = fmincon(@(param) identity_link(param,data,Xtype,Nprs,Lambda),init_param,[],[],[],[],zeros(nprs,1),[],[],opts); % fit parameters of identity-link model
     elseif strcmp(linkfunc,'logit')
-        opts = optimset('GradObj','on','Hessian','on','Display','off');
+        %         opts = optimset('Gradobj','on','Hessian','on','Display','off');
+        opts = optimset('Gradobj','on','Hessian','on','Display','off','Algorithm','trust-region'); % >= MATLAB 2018
         if k == 1, init_param = 1e-3*randn(nprs, 1); % initialise random parameters for the first training set
         else, init_param = param; end % use final parameters from previous training set
         param = fminunc(@(param) logit_link(param,data,Xtype,Nprs,Lambda),init_param,opts); % fit parameters of logit-link model

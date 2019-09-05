@@ -1,4 +1,4 @@
-function [testFit,trainFit,param_mean] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda,linkfunc,invlinkfunc)
+function [testFit,trainFit,param_mean,example_fit] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda,linkfunc,invlinkfunc)
 
 %% Description
 % This function will section the data into nfolds different portions. Each 
@@ -122,3 +122,8 @@ for k = 1:nfolds
 end
 
 param_mean = nanmean(paramMat);
+
+example_fit.true_train = smooth_fr_train;
+example_fit.pred_train = smooth_fr_hat_train;
+example_fit.true_test = smooth_fr_test;
+example_fit.pred_test = smooth_fr_hat_test;

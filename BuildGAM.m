@@ -108,7 +108,7 @@ xc = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
-    Px{i} = sum(x{i})/size(x{i},1); 
+    Px{i} = sum(x{i}~=0)/size(x{i},1); 
     if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
 
@@ -121,7 +121,8 @@ h = h/sum(h);
 switch method
     case {'forward','backward'}
         %% define model combinations to fit
-        Model = DefineModels(nvars,1:nvars,varchoose);        
+        Model = DefineModels(nvars,1:nvars,varchoose);
+%         Model = Model(end-nvars:end); % fit only nvars+1 models (full model & models missing one variable)
         %% fit all models
         models = FitModels(Model,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);        
         %% select best model

@@ -8,5 +8,6 @@ for n = 1:nModels
     Nprs = cell2mat(nprs(Model{n}));
     Lambda = lambda(Model{n});
     fprintf('\t- Fitting model %d of %d\n', bin2dec(num2str(Model{n})), bin2dec(num2str(ones(1,length(Model{n})))));
-    [models.testFit{n},models.trainFit{n},models.wts{n}] = FitModel(X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
+    [models.testFit{n},models.trainFit{n},models.wts{n},models.exampleFit{n}] = ...
+        FitModel(X,Xtype,Nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
 end

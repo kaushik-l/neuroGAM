@@ -137,7 +137,7 @@ h = h/sum(h);
 
 %% fit coupled models
 fprintf(['...... Fitting fully coupled model with ' linkfunc '-link\n']);
-[Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts] = FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
+[Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts,Coupledmodel.exampleFit] = FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
 Coupledmodel.x = [xc 1:size(Yt,2)]; Coupledmodel.xname = xname; Coupledmodel.xtype = xtype;
 
 %% match weights 'wts' to corresponding inputs 'x'

@@ -5,15 +5,22 @@ if strcmp(xtype,'event')
     % initialise with zeros
     binedges = linspace(binrange(1),binrange(2),nbins+1); xvals = 0.5*(binedges(1:end-1) + binedges(2:end));
     x_1hot = zeros(nt,prod(nbins));
-    indx = find(xt);  % identify time indices of the event
-    % remove events that are less than kernel_length away from boundary
-    indx((indx + binedges(1))<0 | (indx + binedges(end))>nt) = [];
-    indx_beg = indx + binedges(1:end-1); % indices of start of ith basis function of kernel
-    indx_end = indx + binedges(2:end); % indices of end of ith basis function of kernel
-    for i = 1:nbins
-        for j=1:length(indx)
-            x_1hot(indx_beg(j,i):indx_end(j,i)-1,i) = 1;
+    if numel(unique(xt)) == 2
+        indx = find(xt);  % identify time indices of the event
+        % remove events that are less than kernel_length away from boundary
+        indx((indx + binedges(1))<0 | (indx + binedges(end))>nt) = [];
+        indx_beg = indx + binedges(1:end-1); % indices of start of ith basis function of kernel
+        indx_end = indx + binedges(2:end); % indices of end of ith basis function of kernel
+        for i = 1:nbins
+            for j=1:length(indx)
+                x_1hot(indx_beg(j,i):indx_end(j,i)-1,i) = 1;
+            end
         end
+    else
+        bincenters = 0.5*(binedges(1:end-1) + binedges(2:end));
+        xt(1:1 - bincenters(1)) = 0; % remove data around edges so they won't wrap around
+        xt(end - bincenters(end):end) = 0;
+        for i = 1:nbins, x_1hot(:,i) = circshift(xt,bincenters(i)); end
     end
 elseif strcmp(xtype,'2D')
     % initialise with zeros

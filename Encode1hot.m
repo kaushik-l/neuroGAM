@@ -8,7 +8,7 @@ if strcmp(xtype,'event')
     if numel(unique(xt)) == 2
         indx = find(xt);  % identify time indices of the event
         % remove events that are less than kernel_length away from boundary
-        indx((indx + binedges(1))<0 | (indx + binedges(end))>nt) = [];
+        indx((indx + binedges(1))<=0 | (indx + binedges(end))>=nt) = [];
         indx_beg = indx + binedges(1:end-1); % indices of start of ith basis function of kernel
         indx_end = indx + binedges(2:end); % indices of end of ith basis function of kernel
         for i = 1:nbins

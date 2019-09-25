@@ -5,9 +5,10 @@ for i=min(sum(Modelmatrix)):max(sum(Modelmatrix))
     if i==min(sum(Modelmatrix)) % first, select the best of the simplest possible models
         indx = sum(Modelmatrix) == i; fit_indx = [fit_indx find(indx)];
         models_temp = FitModels(Model(indx),x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
-        models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; models.wts(indx,1) = models_temp.wts;
+        models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; 
+        models.wts(indx,1) = models_temp.wts; models.wtsMat(indx,1) = models_temp.wtsMat;
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
-        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+        LLvals = reshape(testFit(:,4),nfolds,nrows/nfolds); % 4th column contains likelihood values
         models.bestmodel = find(nanmean(LLvals) == max(nanmean(LLvals(:,sum(Modelmatrix)==i))));
         if isempty(models.bestmodel), break; end
     else % then, select the best i-variables model from among those containing the best i-1 variables
@@ -15,9 +16,10 @@ for i=min(sum(Modelmatrix)):max(sum(Modelmatrix))
         indx2 = (sum(Modelmatrix(Modelmatrix(:,models.bestmodel)>0,:),1)==i-1);  % all models containing best i-1 variables
         indx = indx1 & indx2; fit_indx = [fit_indx find(indx)];
         models_temp = FitModels(Model(indx),x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
-        models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; models.wts(indx,1) = models_temp.wts;
+        models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; 
+        models.wts(indx,1) = models_temp.wts; models.wtsMat(indx,1) = models_temp.wtsMat;
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
-        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+        LLvals = reshape(testFit(:,4),nfolds,nrows/nfolds); % 4th column contains likelihood values
         bestcandidate = (nanmean(LLvals) == max(nanmean(LLvals(:,indx1 & indx2))));
         % significance test :: best new candidate vs current best model
         [pval,~] = signrank(LLvals(:,bestcandidate),LLvals(:,models.bestmodel),'tail','right');
@@ -34,4 +36,5 @@ models.class = models.class(fit_indx);
 models.testFit = models.testFit(fit_indx);
 models.trainFit = models.trainFit(fit_indx);
 models.wts = models.wts(fit_indx);
+models.wtsMat = models.wtsMat(fit_indx);
 if ~isnan(models.bestmodel), models.bestmodel = find(all(cell2mat(models.class) == bestmodelclass,2)); end

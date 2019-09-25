@@ -68,7 +68,7 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[xname,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+[xname,xtype,basistype,nbins,binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
 
 %% define undefined analysis parameters
 if isempty(alpha), alpha = 0.05; end
@@ -112,9 +112,9 @@ x = cell(1,nvars); % 1-hot representation of xt
 xc = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
-    [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
-    Px{i} = sum(x{i})/size(x{i},1); 
-    if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
+%     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
+    [x{i},basis{i},nprs{i}] = RecodeInput(xt{i}, xtype{i}, binrange{i}, nbins{i}, basistype{i}, dt);
+    Px{i} = sum(x{i}~=0)/size(x{i},1); 
 end
 
 %% binarise spikes and combine them with input variables
@@ -124,11 +124,13 @@ nprsY = {size(Y,2)};
 
 %% combine input variables with spikes from other neurons
 X = [cell2mat(x) Y];
+x = [x Y];
 Px = [Px sum(Y)/size(Y,1)];
 Xtype = [xtype Ytype];
 nprs = cell2mat([nprs nprsY]);
 Lambda = [lambda lambdaY];
 nvars = nvars + 1;
+basis{end+1}.x = 1:size(Yt,2); basis{end}.y = eye(size(Yt,2));
 
 %% define filter to smooth the firing rate
 t = linspace(-2*filtwidth,2*filtwidth,4*filtwidth + 1);
@@ -137,18 +139,22 @@ h = h/sum(h);
 
 %% fit coupled models
 fprintf(['...... Fitting fully coupled model with ' linkfunc '-link\n']);
-[Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts,Coupledmodel.exampleFit] = FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
-Coupledmodel.x = [xc 1:size(Yt,2)]; Coupledmodel.xname = xname; Coupledmodel.xtype = xtype;
+[Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts,Coupledmodel.wtsMat,Coupledmodel.response] = ...
+    FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
+Coupledmodel.basis = basis; 
+Coupledmodel.x = cellfun(@(x) x.x, basis, 'UniformOutput', false); Coupledmodel.xname = xname; Coupledmodel.xtype = xtype;
+Coupledmodel.invlinkfunc = invlinkfunc;
 
 %% match weights 'wts' to corresponding inputs 'x'
 Coupledmodel.wts = mat2cell(Coupledmodel.wts,1,nprs);
+Coupledmodel.wtsMat = mat2cell(Coupledmodel.wtsMat,nfolds,nprs);
 
 %% compare uncoupled model vs coupled model
 if ~isnan(bestUncoupledmodel), UncoupledtestFit = Uncoupledmodel.testFit{bestUncoupledmodel};
 else, UncoupledtestFit = Uncoupledmodel.testFit{end}; end
 CoupledtestFit = Coupledmodel.testFit;
-UncoupledLLvals = UncoupledtestFit(:,3); % 3rd column contains likelihood values
-CoupledLLvals = CoupledtestFit(:,3);
+UncoupledLLvals = UncoupledtestFit(:,4); % 3rd column contains likelihood values
+CoupledLLvals = CoupledtestFit(:,4);
 [pval1,~] = signrank(CoupledLLvals,UncoupledLLvals,'tail','right');
 [pval2,~] = signrank(CoupledLLvals,UncoupledLLvals,'tail','left');
 if (pval1<alpha || pval2<alpha), models.LLRcoupling = mean(CoupledLLvals) - mean(UncoupledLLvals);
@@ -156,11 +162,17 @@ else, models.LLRcoupling = 0; end
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
 for j=1:nvars
-    other_factors = sum(cellfun(@(x,y) sum(x.*y), Coupledmodel.wts(1:nvars ~= j), Px(1:nvars ~= j)));
-    Coupledmodel.marginaltunings{j} = invlinkfunc(Coupledmodel.wts{j} + other_factors)/dt;
+    % save kernels/weights after applying nonlinearity (e.g. exponentiated) --> can be interpreted as gain factors
+    gainfactors = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}');
+    Coupledmodel.gainfactors{j}.mean = mean(gainfactors,2); Coupledmodel.gainfactors{j}.std = std(gainfactors,[],2);
+    % save marginal tunings
+    other_vars = (j~=1:nvars);
+    other_factors = nanmean(cell2mat(x(other_vars))*cell2mat(Coupledmodel.wts(other_vars))');
+    marginaltunings = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}' + other_factors)/dt;
+    Coupledmodel.marginaltunings{j}.mean = mean(marginaltunings,2); Coupledmodel.marginaltunings{j}.std = std(marginaltunings,[],2);
     if strcmp(Xtype{j},'2D'), Coupledmodel.marginaltunings{j} = reshape(Coupledmodel.marginaltunings{j},nprs(j)); end
 end
 
 %% output
-models.Coupledmodel = Coupledmodel;
 models.Uncoupledmodel = Uncoupledmodel;
+models.Coupledmodel = Coupledmodel;

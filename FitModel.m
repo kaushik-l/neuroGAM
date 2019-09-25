@@ -1,4 +1,4 @@
-function [testFit,trainFit,param_mean,example_fit] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda,linkfunc,invlinkfunc)
+function [testFit,trainFit,param_mean,paramMat,response] = FitModel(X,Xtype,Nprs,y,dt,h,nfolds,Lambda,linkfunc,invlinkfunc)
 
 %% Description
 % This function will section the data into nfolds different portions. Each 
@@ -21,9 +21,11 @@ nsections = nfolds*nchunks;
 edges = round(linspace(1,numel(y)+1,nsections+1));
 
 % initialize outputs
-testFit = nan(nfolds,6); % to hold 6 values: var ex, correlation, llh increase, mse, # of spikes, length of test data
-trainFit = nan(nfolds,6); % var ex, correlation, llh increase, mse, # of spikes, length of train data
+testFit = nan(nfolds,7); % to hold 7 values: var ex, var ex pseudo, correlation, llh increase, mse, # of spikes, length of test data
+trainFit = nan(nfolds,7); % var ex, correlation, llh increase, mse, # of spikes, length of train data
 paramMat = nan(nfolds,nprs);
+response.true_test = [];
+response.pred_test = [];
 
 %% perform k-fold cross validation
 for k = 1:nfolds
@@ -82,6 +84,8 @@ for k = 1:nfolds
     r_test = invlinkfunc(test_X * param); n = test_spikes; meanFR_test = nanmean(test_spikes);
     log_llh_test_model = nansum(r_test-n.*log(r_test)+log(factorial(n)))/sum(n); %note: log(gamma(n+1)) will be unstable if n is large (which it isn't here)
     log_llh_test_mean = nansum(meanFR_test-n.*log(meanFR_test)+log(factorial(n)))/sum(n);
+    log_llh_test_best = nansum(n-n.*log(n)+log(gamma(n+1)))/sum(n);
+    varExplainPseudo_test = (log_llh_test_model - log_llh_test_mean)/(log_llh_test_best - log_llh_test_mean);
     log_llh_test = (-log_llh_test_model + log_llh_test_mean); % nats/spike
     log_llh_test = log_llh_test/log(2); % convert to bits/spike
     
@@ -89,7 +93,7 @@ for k = 1:nfolds
     mse_test = nanmean((smooth_fr_hat_test-smooth_fr_test).^2);
     
     % fill in all the relevant values for the test data from the kth fold
-    testFit(k,:) = [varExplain_test correlation_test log_llh_test mse_test sum(n) numel(test_ind)];
+    testFit(k,:) = [varExplain_test varExplainPseudo_test correlation_test log_llh_test mse_test sum(n) numel(test_ind)];
     
     %% %%%%%%%%%%% TRAINING DATA %%%%%%%%%%%
     % compute the smooth firing rate
@@ -108,6 +112,8 @@ for k = 1:nfolds
     r_train = invlinkfunc(train_X * param); n_train = train_spikes; meanFR_train = nanmean(train_spikes);   
     log_llh_train_model = nansum(r_train-n_train.*log(r_train)+log(gamma(n_train+1)))/sum(n_train);
     log_llh_train_mean = nansum(meanFR_train-n_train.*log(meanFR_train)+log(gamma(n_train+1)))/sum(n_train);
+    log_llh_train_best = nansum(n_train-n_train.*log(n_train)+log(gamma(n_train+1)))/sum(n_train);
+    varExplainPseudo_train = (log_llh_train_model - log_llh_train_mean)/(log_llh_train_best - log_llh_train_mean);
     log_llh_train = (-log_llh_train_model + log_llh_train_mean);
     log_llh_train = log_llh_train/log(2); % convert to bits/spike
     
@@ -115,15 +121,19 @@ for k = 1:nfolds
     mse_train = nanmean((smooth_fr_hat_train-smooth_fr_train).^2);
     
     % fill in all the relevant values for the training data from the kth fold
-    trainFit(k,:) = [varExplain_train correlation_train log_llh_train mse_train sum(n_train) numel(train_ind)];
+    trainFit(k,:) = [varExplain_train varExplainPseudo_train correlation_train log_llh_train mse_train sum(n_train) numel(train_ind)];
 
     % save the parameters
     paramMat(k,:) = param;
+    
+    % save true/predicted spike train on test data
+    response.true_test = [response.true_test ; smooth_fr_test];
+    response.pred_test = [response.pred_test ; smooth_fr_hat_test];
 end
 
+% save mean params
 param_mean = nanmean(paramMat);
 
-example_fit.true_train = smooth_fr_train;
-example_fit.pred_train = smooth_fr_hat_train;
-example_fit.true_test = smooth_fr_test;
-example_fit.pred_test = smooth_fr_hat_test;
+% save true/predicted spike train on train data
+response.true_train = smooth_fr_train;
+response.pred_train = smooth_fr_hat_train;

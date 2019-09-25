@@ -68,7 +68,7 @@ nvars = length(xt);
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[xname,xtype,nbins, binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
+[xname,xtype,basistype,nbins,binrange,nfolds,dt,filtwidth,linkfunc,lambda,alpha,varchoose,method] = deal(prs{:});
 method = lower(method);
 
 %% define undefined analysis parameters
@@ -104,12 +104,12 @@ fprintf(['...... Fitting ' linkfunc '-link model\n']);
 
 %% encode variables in 1-hot format
 x = cell(1,nvars); % 1-hot representation of xt
-xc = cell(1,nvars); % bin centres
+basis = cell(1,nvars); % bin centres
 nprs = cell(1,nvars); % number of parameters (weights)
 for i=1:nvars
-    [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
+%     [x{i},xc{i},nprs{i}] = Encode1hot(xt{i}, xtype{i}, binrange{i}, nbins{i});
+    [x{i},basis{i},nprs{i}] = RecodeInput(xt{i}, xtype{i}, binrange{i}, nbins{i}, basistype{i}, dt);
     Px{i} = sum(x{i}~=0)/size(x{i},1); 
-    if strcmp(xtype{i},'event'), xc{i} = xc{i}*dt; end
 end
 
 %% define filter to smooth the firing rate
@@ -128,34 +128,46 @@ switch method
         %% select best model
         fprintf('...... Performing model selection\n');
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
-        LLvals = reshape(testFit(:,3),nfolds,nrows/nfolds); % 3rd column contains likelihood values
+        LLvals = reshape(testFit(:,4),nfolds,nrows/nfolds); % 4th column contains likelihood values
         if strcmp(method,'forward'), models.bestmodel = ForwardSelect(Model,LLvals,alpha);
         elseif strcmp(method,'backward'), models.bestmodel = BackwardEliminate(Model,LLvals,alpha); end
     case {'fastforward'}
         Model = DefineModels(nvars,1:nvars,varchoose);
         models.class = Model; 
-        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,7); models.trainFit{n,1} = nan(nfolds,7); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
         models = FastForwardSelect(Model,models,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc,alpha);
     case {'fastbackward'}
         Model = DefineModels(nvars,1:nvars,varchoose);
         models.class = Model; 
-        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,6); models.trainFit{n,1} = nan(nfolds,6); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
+        for n = 1:length(Model), models.testFit{n,1} = nan(nfolds,7); models.trainFit{n,1} = nan(nfolds,7); models.wts{n,1} = nan(1,sum(cell2mat(nprs).*models.class{n})); end
         models = FastBackwardEliminate(Model,models,x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc,alpha);
 end
 
 %% match weights 'wts' to corresponding inputs 'x'
 models.wts = cellfun(@(x,y) mat2cell(x,1,cell2mat(nprs).*y),models.wts,models.class,'UniformOutput',false);
-models.x = xc; models.xname = xname; models.xtype = xtype;
+models.wtsMat = cellfun(@(x,y) mat2cell(x,nfolds,cell2mat(nprs).*y),models.wtsMat,models.class,'UniformOutput',false);
+models.basis = basis; 
+models.x = cellfun(@(x) x.x, basis, 'UniformOutput', false); models.xname = xname; models.xtype = xtype;
+models.invlinkfunc = invlinkfunc;
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
 for i=1:numel(models.class)
     for j=1:nvars
+        other_vars = (j~=1:nvars & models.class{i});
         if models.class{i}(j) && ~all(isnan(models.wts{i}{j}))
-            if isempty(models.wts{i}(j~=1:nvars & models.class{i})) || (strcmp(xtype{j},'event') && all(strcmp(xtype(j~=1:nvars & models.class{i}),'event'))), other_factors = 0; % events don't overlap => need not marginalise
-            else, other_factors = sum(cellfun(@(x,y) sum(x.*y), models.wts{i}(j~=1:nvars & models.class{i}), Px(j~=1:nvars & models.class{i}))); end
-            models.marginaltunings{i}{j} = invlinkfunc(models.wts{i}{j} + other_factors)/dt;
-            if strcmp(xtype{j},'2D'), models.marginaltunings{i}{j} = reshape(models.marginaltunings{i}{j},nbins{j}); end
-        else, models.marginaltunings{i}{j} = []; 
+            % save kernels/weights after applying nonlinearity (e.g. exponentiated) --> can be interpreted as gain factors
+            gainfactors = invlinkfunc(basis{j}.y*models.wtsMat{i}{j}');
+            models.gainfactors{i}{j}.mean = mean(gainfactors,2); models.gainfactors{i}{j}.std = std(gainfactors,[],2);
+            % save marginal tunings
+            if isempty(models.wts{i}(other_vars)) || (strcmp(xtype{j},'event') && all(strcmp(xtype(other_vars),'event'))), other_factors = 0; % events don't overlap => need not marginalise
+            else, other_factors = nanmean(cell2mat(x(other_vars))*cell2mat(models.wts{i}(other_vars))'); end
+            marginaltunings = invlinkfunc(basis{j}.y*models.wtsMat{i}{j}' + other_factors)/dt;
+            models.marginaltunings{i}{j}.mean = mean(marginaltunings,2); models.marginaltunings{i}{j}.std = std(marginaltunings,[],2);
+            if strcmp(xtype{j},'2D')
+                models.marginaltunings{i}{j}.mean = reshape(models.marginaltunings{i}{j}.mean,nbins{j}); 
+                models.marginaltunings{i}{j}.std = reshape(models.marginaltunings{i}{j}.std,nbins{j}); 
+            end
+        else, models.marginaltunings{i}{j}.mean = []; models.marginaltunings{i}{j}.std = []; 
         end
     end
 end

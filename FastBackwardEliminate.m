@@ -27,7 +27,8 @@ for i=flip(unique(sum(Modelmatrix)))
     end
 end
 fprintf('...... Performing model selection\n');
-if (isempty(models.bestmodel) || signrank(LLvals(:,models.bestmodel),0,'tail','right') > alpha), models.bestmodel = nan; end % best model better than null model?
+if all(isnan(LLvals(:,models.bestmodel))), models.bestmodel = nan;
+elseif (isempty(models.bestmodel) || signrank(LLvals(:,models.bestmodel),0,'tail','right') > alpha), models.bestmodel = nan; end % best model better than null model?
 if ~isnan(models.bestmodel), bestmodelclass = models.class{models.bestmodel}; end
 
 % only output models that were fit

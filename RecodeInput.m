@@ -8,7 +8,7 @@ if strcmp(xtype,'event')
     if any(strcmp(basistype,{'boxcar','raisedcosine','nlraisedcosine'}))
         basis = MakeBasis(basistype, nbins, dt, dt*[binedges(1) binedges(end)]);
             for i=1:size(basis.y,2)
-                xt_conv = conv(xt,basis.y(:,i));
+                xt_conv = conv3(xt,basis.y(:,i));
                 x_recoded(:,i) = xt_conv(1:end-numel(basis.x)+1);
             end
             x_recoded = circshift(x_recoded, round(basis.x(1)/dt));

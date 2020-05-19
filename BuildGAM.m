@@ -171,3 +171,22 @@ for i=1:numel(models.class)
         end
     end
 end
+
+%% simulate spike train
+rate = invlinkfunc(cell2mat(x(~strcmp(xname,'spikehist')))*cell2mat(models.wts{1}(~strcmp(xname,'spikehist')))')/dt;
+ratemax = 2*max(rate);
+tmax = dt*length(rate);
+tspk = cumsum(exprnd(1/ratemax,1e6,1)); tspk = tspk(tspk < tmax); nspk = numel(tspk);
+bspk = ceil(tspk/dt); nt = length(rate);
+spikehist = models.gainfactors{1}{strcmp(xname,'spikehist')}.mean;
+tspk_selected = [];
+for i=1:nspk
+    if rate(bspk(i))/ratemax > rand
+        tspk_selected = [tspk_selected bspk(i)];
+        if bspk(i) < (nt - length(spikehist))
+            rate(bspk(i):bspk(i)+length(spikehist)-1) = rate(bspk(i):bspk(i)+length(spikehist)-1).*spikehist;
+        end
+    end
+end
+yt_sim = zeros(nt,1);
+yt_sim(tspk_selected) = 1;

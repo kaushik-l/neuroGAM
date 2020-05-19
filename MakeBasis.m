@@ -48,6 +48,7 @@ elseif strcmp(basistype,'nlraisedcosine')
     ihbasis = ff(repmat(nlin(iht + binSize/3), 1, nBases), repmat(ctrs, numel(iht), 1), db);
     ihctrs = invnl(ctrs);
 end
+
 bases.y = ihbasis;
 bases.x = iht;
 % bases.c = ihctrs;

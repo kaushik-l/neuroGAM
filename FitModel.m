@@ -35,14 +35,14 @@ for k = 1:nfolds
     test_ind = cell2mat(arrayfun(@(j) edges((j-1)*nfolds + k):edges((j-1)*nfolds + k + 1)-1, 1:nchunks,'UniformOutput',false));
     
     test_spikes = y(test_ind); %test spiking
-    smooth_spikes_test = conv(test_spikes,h,'same'); %returns vector same size as original
+    smooth_spikes_test = conv3(test_spikes,h,'same'); %returns vector same size as original
     smooth_fr_test = smooth_spikes_test./dt;
     test_X = X(test_ind,:);
     
     % get training data
     train_ind = setdiff(1:numel(y),test_ind);
     train_spikes = y(train_ind);
-    smooth_spikes_train = conv(train_spikes,h,'same'); %returns vector same size as original
+    smooth_spikes_train = conv3(train_spikes,h,'same'); %returns vector same size as original
     smooth_fr_train = smooth_spikes_train./dt;
     train_X = X(train_ind,:);    
     data{1} = train_X; data{2} = train_spikes;
@@ -70,7 +70,7 @@ for k = 1:nfolds
     %% %%%%%%%%%%% TEST DATA %%%%%%%%%%%%%
     % compute model predicted firing rate
     fr_hat_test = invlinkfunc(test_X * param)/dt;
-    smooth_fr_hat_test = conv(fr_hat_test,h,'same'); %returns vector same size as original
+    smooth_fr_hat_test = conv3(fr_hat_test,h,'same'); %returns vector same size as original
     
     % variance explained
     sse = sum((smooth_fr_hat_test-smooth_fr_test).^2);
@@ -98,7 +98,7 @@ for k = 1:nfolds
     %% %%%%%%%%%%% TRAINING DATA %%%%%%%%%%%
     % compute the smooth firing rate
     fr_hat_train = invlinkfunc(train_X * param)/dt;
-    smooth_fr_hat_train = conv(fr_hat_train,h,'same'); %returns vector same size as original
+    smooth_fr_hat_train = conv3(fr_hat_train,h,'same'); %returns vector same size as original
     
     % variance explained
     sse = sum((smooth_fr_hat_train-smooth_fr_train).^2);

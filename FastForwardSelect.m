@@ -7,6 +7,7 @@ for i=min(sum(Modelmatrix)):max(sum(Modelmatrix))
         models_temp = FitModels(Model(indx),x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
         models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; 
         models.wts(indx,1) = models_temp.wts; models.wtsMat(indx,1) = models_temp.wtsMat;
+        models.response(indx,1) = models_temp.response;
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
         LLvals = reshape(testFit(:,4),nfolds,nrows/nfolds); % 4th column contains likelihood values
         models.bestmodel = find(nanmean(LLvals) == max(nanmean(LLvals(:,sum(Modelmatrix)==i))));
@@ -18,6 +19,7 @@ for i=min(sum(Modelmatrix)):max(sum(Modelmatrix))
         models_temp = FitModels(Model(indx),x,xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
         models.testFit(indx,1) = models_temp.testFit; models.trainFit(indx,1) = models_temp.trainFit; 
         models.wts(indx,1) = models_temp.wts; models.wtsMat(indx,1) = models_temp.wtsMat;
+        models.response(indx,1) = models_temp.response;
         testFit = cell2mat(models.testFit); nrows = size(testFit,1);
         LLvals = reshape(testFit(:,4),nfolds,nrows/nfolds); % 4th column contains likelihood values
         bestcandidate = (nanmean(LLvals) == max(nanmean(LLvals(:,indx1 & indx2))));

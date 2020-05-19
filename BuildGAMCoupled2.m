@@ -1,4 +1,4 @@
-function models = BuildGAMCoupled(xt,yt,Yt,prs)
+function models = BuildGAMCoupled2(xt,yt,Yt,prs)
 
 % BUILDGAMCOUPLED: Fit generalised additive models to neural data.
 %   Model: g(r) = sum_i[f_i(x_i)], where r denotes the mean response, x_i 
@@ -94,17 +94,9 @@ for i=indx, binrange{i} = round(binrange{i}/dt); end
 xtype = xtype(bestinputs);
 nbins = nbins(bestinputs);
 binrange = binrange(bestinputs);
+lambdaY = lambda(end);
 lambda = lambda(bestinputs);
 
-%% add other neurons as predictors
-[xname{end+1:end+size(Yt,2)}] = deal('neuron');
-[xtype{end+1:end+size(Yt,2)}] = deal('event');
-[basistype{end+1:end+size(Yt,2)}] = deal('nlraisedcosine');
-[nbins{end+1:end+size(Yt,2)}] = deal(5);
-[binrange{end+1:end+size(Yt,2)}] = deal([0.006 ; 0.246]/dt);
-[lambda{end+1:end+size(Yt,2)}] = deal(lambda{end});
-xt = [xt mat2cell(Yt, size(Yt,1), ones(1,size(Yt,2)))];
-nvars = nvars + size(Yt,2);
 
 %% compute inverse-link function
 if strcmp(linkfunc,'log')
@@ -125,10 +117,21 @@ for i=1:nvars
     Px{i} = sum(x{i}~=0)/size(x{i},1); 
 end
 
+%% binarise spikes and combine them with input variables
+% Yt = circshift(Yt,1);
+Y = double(Yt>0); % (bins with >1 spike counted as 1 spike ---> if this matters, use small enough bins)
+Ytype = {'event'}; % spikes are events
+nprsY = {size(Y,2)};
+
 %% combine input variables with spikes from other neurons
-X = cell2mat(x);
-Xtype = xtype;
-nprs = cell2mat(nprs);
+X = [cell2mat(x) Y];
+x = [x Y];
+Px = [Px sum(Y)/size(Y,1)];
+Xtype = [xtype Ytype];
+nprs = cell2mat([nprs nprsY]);
+Lambda = [lambda lambdaY];
+nvars = nvars + 1;
+basis{end+1}.x = 1:size(Yt,2); basis{end}.y = eye(size(Yt,2));
 
 %% define filter to smooth the firing rate
 t = linspace(-2*filtwidth,2*filtwidth,4*filtwidth + 1);
@@ -137,9 +140,8 @@ h = h/sum(h);
 
 %% fit coupled models
 fprintf(['...... Fitting fully coupled model with ' linkfunc '-link\n']);
-% X = sparse(X);
 [Coupledmodel.testFit,Coupledmodel.trainFit,Coupledmodel.wts,Coupledmodel.wtsMat,Coupledmodel.response] = ...
-    FitModel(X,Xtype,nprs,yt,dt,h,nfolds,lambda,linkfunc,invlinkfunc);
+    FitModel(X,Xtype,nprs,yt,dt,h,nfolds,Lambda,linkfunc,invlinkfunc);
 Coupledmodel.basis = basis; 
 Coupledmodel.x = cellfun(@(x) x.x, basis, 'UniformOutput', false); Coupledmodel.xname = xname; Coupledmodel.xtype = xtype;
 Coupledmodel.invlinkfunc = invlinkfunc;
@@ -162,60 +164,19 @@ if (~all(isnan(CoupledLLvals)) && ~all(isnan(UncoupledLLvals)))
 else
     models.LLRcoupling = 0;
 end
-for j=1:nvars, Coupledmodel.gainfactors{j} = mean(invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}'),2); end
 
 %% convert weights to response rate (tuning curves) & wrap 2D tunings if any
-% for j=1:nvars
-%     fprintf(['...... computing marginal tuning for variable ' num2str(j) '\n']);
-%     % save kernels/weights after applying nonlinearity (e.g. exponentiated) --> can be interpreted as gain factors
-%     gainfactors = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}');
-%     Coupledmodel.gainfactors{j}.mean = mean(gainfactors,2); Coupledmodel.gainfactors{j}.std = std(gainfactors,[],2);
-%     % save marginal tunings
-%     other_vars = (j~=1:nvars);
-%     other_factors = nanmean(cell2mat(x(other_vars))*cell2mat(Coupledmodel.wts(other_vars))');
-%     marginaltunings = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}' + other_factors)/dt;
-%     Coupledmodel.marginaltunings{j}.mean = mean(marginaltunings,2); Coupledmodel.marginaltunings{j}.std = std(marginaltunings,[],2);
-%     if strcmp(Xtype{j},'2D'), Coupledmodel.marginaltunings{j} = reshape(Coupledmodel.marginaltunings{j},nprs(j)); end
-% end
-
-%% simulate spike train with coupling
-rate = invlinkfunc(cell2mat(x(~strcmp(xname,'spikehist')))*cell2mat(Coupledmodel.wts(~strcmp(xname,'spikehist')))')/dt;
-ratemax = 2*max(rate);
-tmax = dt*length(rate);
-tspk = cumsum(exprnd(1/ratemax,1e7,1)); tspk = tspk(tspk < tmax); nspk = numel(tspk);
-bspk = ceil(tspk/dt); nt = length(rate);
-spikehist = Coupledmodel.gainfactors{strcmp(xname,'spikehist')};
-tspk_selected = [];
-for i=1:nspk
-    if rate(bspk(i))/ratemax > rand
-        tspk_selected = [tspk_selected bspk(i)];
-        if bspk(i) < (nt - length(spikehist))
-            rate(bspk(i):bspk(i)+length(spikehist)-1) = rate(bspk(i):bspk(i)+length(spikehist)-1).*spikehist;
-        end
-    end
+for j=1:nvars
+    % save kernels/weights after applying nonlinearity (e.g. exponentiated) --> can be interpreted as gain factors
+    gainfactors = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}');
+    Coupledmodel.gainfactors{j}.mean = mean(gainfactors,2); Coupledmodel.gainfactors{j}.std = std(gainfactors,[],2);
+    % save marginal tunings
+    other_vars = (j~=1:nvars);
+    other_factors = nanmean(cell2mat(x(other_vars))*cell2mat(Coupledmodel.wts(other_vars))');
+    marginaltunings = invlinkfunc(basis{j}.y*Coupledmodel.wtsMat{j}' + other_factors)/dt;
+    Coupledmodel.marginaltunings{j}.mean = mean(marginaltunings,2); Coupledmodel.marginaltunings{j}.std = std(marginaltunings,[],2);
+    if strcmp(Xtype{j},'2D'), Coupledmodel.marginaltunings{j} = reshape(Coupledmodel.marginaltunings{j},nprs(j)); end
 end
-yt_sim = zeros(nt,1);
-yt_sim(tspk_selected) = 1;
-
-%% simulate spike train without coupling
-x2 = x(1:14); wts2 = Coupledmodel.wts(1:14);
-rate = invlinkfunc(cell2mat(x2(~strcmp(xname(1:14),'spikehist')))*cell2mat(wts2(~strcmp(xname(1:14),'spikehist')))')/dt;
-ratemax = 2*max(rate);
-tmax = dt*length(rate);
-tspk = cumsum(exprnd(1/ratemax,1e7,1)); tspk = tspk(tspk < tmax); nspk = numel(tspk);
-bspk = ceil(tspk/dt); nt = length(rate);
-spikehist = Coupledmodel.gainfactors{strcmp(xname,'spikehist')};
-tspk_selected = [];
-for i=1:nspk
-    if rate(bspk(i))/ratemax > rand
-        tspk_selected = [tspk_selected bspk(i)];
-        if bspk(i) < (nt - length(spikehist))
-            rate(bspk(i):bspk(i)+length(spikehist)-1) = rate(bspk(i):bspk(i)+length(spikehist)-1).*spikehist;
-        end
-    end
-end
-yt_sim = zeros(nt,1);
-yt_sim(tspk_selected) = 1;
 
 %% output
 models.Uncoupledmodel = Uncoupledmodel;

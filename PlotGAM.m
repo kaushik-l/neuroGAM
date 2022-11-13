@@ -13,7 +13,7 @@ fprintf('...... Plotting results\n');
 
 %% load analysis parameters
 prs = struct2cell(prs);
-[varname,vartype,~, ~,nfolds,~,~,~,~,~] = deal(prs{:});
+[varname,vartype,~,~, ~,nfolds,~,~,~,~,~,~,~] = deal(prs{:});
 nvars = length(varname);
 
 % give each combination of variables a name
@@ -71,7 +71,7 @@ if ~isnan(bestmodel)
             set(gca,'fontsize',16); box off;
         elseif ~isempty(fvals{i})
             subplot(Nr,Nc,2*Nc+i);
-            plot(xvals{i},fvals{i},'Linewidth',2,'Color','k');
+            plot(xvals{i},fvals{i}.mean,'Linewidth',2,'Color','k');
             xlabel(varname{i}); ylabel('Firing rate (spk/s)');
             set(gca,'fontsize',16); box off;
         end
